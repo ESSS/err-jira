@@ -6,8 +6,8 @@ import requests
 
 class Jira(BotPlugin):
     """A plugin for interacting with Atlassian JIRA"""
-    min_err_version = '1.6.0'  # Optional, but recommended
-    max_err_version = '2.0.0'  # Optional, but recommended
+    min_err_version = '2.2.0-beta'  # Optional, but recommended
+    max_err_version = '2.2.0-beta'  # Optional, but recommended
 
     def get_configuration_template(self):
         """Defines the configuration structure this plugin supports"""
@@ -18,12 +18,15 @@ class Jira(BotPlugin):
 
     def get_issue(self, issue_id):
         """Retrieves issue JSON from JIRA"""
-        response = requests.get(
-            self.config['URL']+'/rest/api/latest/issue/'+issue_id+'.json',
-            auth=(self.config['USERNAME'], self.config['PASSWORD']))
+        url = self.config['URL']
+        if url.startswith('<') and url.endswith('>'):
+            url = url[1:-1]
+        url = url + '/rest/api/latest/issue/' + issue_id
+        logging.debug('[JIRA] request: %s' % url)
+        response = requests.get(url, auth=(self.config['USERNAME'], self.config['PASSWORD']))
         return response
 
-    def callback_message(self, conn, mess):
+    def callback_message(self, mess):
         """A callback which responds to mention of JIRA issues"""
         if self.config:
             matches = []
@@ -31,7 +34,7 @@ class Jira(BotPlugin):
             for project in self.config['PROJECTS']:
                 regexes.append(r'(%s\-[0-9]+)' % project)
             for regex in regexes:
-                matches.extend(re.findall(regex, mess.getBody(), flags=re.IGNORECASE))
+                matches.extend(re.findall(regex, mess.body, flags=re.IGNORECASE))
             if matches:
                 # set() gives us uniques, but does not preserve order.
                 for match in set(matches):
@@ -42,12 +45,12 @@ class Jira(BotPlugin):
                         logging.debug("[JIRA] retrieved issue data: %s" % issue_response)
                         issue_summary = issue_response.json()['fields']['summary']
                         html_message = "<html><body><a href=\"%s/browse/%s\">%s</a>: %s</body></html>" % (self.config['URL'], issue_id, issue_id, issue_summary,)
-                        self.send(mess.getFrom(), html_message, message_type=mess.getType())
+                        self.send(mess.frm, html_message, message_type=mess.type)
                     elif issue_response.status_code in (401,):
-                        self.send(mess.getFrom(), "Access Denied", message_type=mess.getType())
+                        self.send(mess.frm, "Access Denied", message_type=mess.type)
                     elif issue_response.status_code in (404,):
-                        self.send(mess.getFrom(), "Issue not found", message_type=mess.getType())
+                        self.send(mess.frm, "Issue not found", message_type=mess.type)
                     else:
                         logging.error("[JIRA] encountered unknown response status code: %s" % issue_response.status_code)
                         logging.error("[JIRA] response body: %s" % issue_response.json())
-                        self.send(mess.getFrom(), "Recieved an unexpected response, see logs for more detail", message_type=mess.getType())
+                        self.send(mess.frm, "Recieved an unexpected response, see logs for more detail", message_type=mess.type)
